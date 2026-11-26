@@ -1,78 +1,61 @@
+
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "../services/api";
-import {
-  getCurrentUser,
-  refreshAccessToken,
-  logout as logoutService,
-} from "../services/authService";
+import { getCurrentUser } from "../services/authService";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  function clearSession() {
-    setUser(null);
-    setAccessToken(null);
-    delete api.defaults.headers.common.Authorization;
-  }
 
   useEffect(() => {
     let isMounted = true;
 
     async function initializeAuth() {
       try {
-        const tokenData = await refreshAccessToken();
-        if (!tokenData?.accessToken) throw new Error("No access token");
-
-        api.defaults.headers.common.Authorization = `Bearer ${tokenData.accessToken}`;
-
+        // Check whether the current user is authenticated
         const currentUser = await getCurrentUser();
 
         if (isMounted) {
-          setAccessToken(tokenData.accessToken);
           setUser(currentUser);
         }
-      } catch {
-        delete api.defaults.headers.common.Authorization;
-        if (isMounted) clearSession();
+      } catch (error) {
+        // User is not authenticated or the request failed
+        if (isMounted) {
+          setUser(null);
+        }
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
 
-    const handleSessionExpired = () => clearSession();
-
-    window.addEventListener("auth:session-expired", handleSessionExpired);
     initializeAuth();
 
     return () => {
       isMounted = false;
-      window.removeEventListener("auth:session-expired", handleSessionExpired);
     };
   }, []);
 
-  async function handleLogout() {
-    try {
-      await logoutService();
-    } finally {
-      clearSession();
-    }
+  // Clear the user's local authentication state
+  function handleLogout() {
+    setUser(null);
   }
 
   const value = {
     user,
-    accessToken,
-    isAuthenticated: Boolean(user && accessToken),
+    isAuthenticated: Boolean(user),
     isLoading,
     setUser,
-    setAccessToken,
     logout: handleLogout,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

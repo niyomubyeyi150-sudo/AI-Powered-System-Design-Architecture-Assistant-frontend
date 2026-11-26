@@ -1,18 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
-
 import { MarkerType, useNodesState, useEdgesState } from "@xyflow/react";
-
 import ArchitectureCanvas from "../components/architecture/ArchitectureCanvas";
-
 import {
   getArchitecture,
   saveArchitecture,
 } from "../services/architectureService";
+import MermaidDiagram from "../components/architecture/MermaidDiagram";
 
-// ========================================
-// COMPONENT PALETTE DATA
-// ========================================
 
 const componentGroups = [
   {
@@ -1231,6 +1226,7 @@ function ArchitecturePage() {
           )}
         </aside>
       </section>
+      <MermaidDiagram nodes={nodes} edges={edges} />
     </main>
   );
 }
