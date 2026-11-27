@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getProject, updateProject } from "../services/projectService";
 
+const STORAGE_KEY = "archpilot-projects";
 const MAX_REQUIREMENT_LENGTH = 2000;
 
 const scalabilityByScale = {
   "Small - Startup / MVP": {
     recommended: "Vertical scaling",
     explanation:
-      "Start with a simple architecture and scale the server resources as your application grows. This keeps the initial infrastructure manageable.",
+      "Start with a simple architecture and scale server resources as your application grows. This keeps initial infrastructure manageable.",
   },
   "Medium - Growing Business": {
     recommended: "Horizontal scaling",
@@ -63,21 +63,15 @@ const defaultRequirements = {
   other: "",
 };
 
-// Remove invisible control characters from user input.
 function sanitizeText(value) {
   // eslint-disable-next-line no-control-regex
   return String(value ?? "").replace(/[\u0000-\u001F\u007F]/g, "");
 }
 
-// Safely normalize text fields received from the backend.
 function normalizeText(value) {
-  return sanitizeText(typeof value === "string" ? value : "").slice(
-    0,
-    MAX_REQUIREMENT_LENGTH,
-  );
+  return sanitizeText(value).slice(0, MAX_REQUIREMENT_LENGTH);
 }
 
-// Validate and normalize requirements received from the backend.
 function normalizeRequirements(existingRequirements, scale) {
   const existing = existingRequirements || {};
 
@@ -108,6 +102,22 @@ function normalizeRequirements(existingRequirements, scale) {
   return requirements;
 }
 
+// Read projects from browser storage.
+function getStoredProjects() {
+  try {
+    const projects = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return Array.isArray(projects) ? projects : [];
+  } catch (error) {
+    console.error("Unable to read saved projects:", error);
+    return [];
+  }
+}
+
+// Save projects to browser storage.
+function saveStoredProjects(projects) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+}
+
 function RequirementsPage() {
   const { projectId } = useParams();
 
@@ -124,73 +134,44 @@ function RequirementsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
-  // Get the recommendation for the selected project's scale.
   const scalabilityRecommendation =
     scalabilityByScale[project?.scale] ||
     scalabilityByScale["Small - Startup / MVP"];
 
-  // Load the selected project from the backend.
+  // Load project from localStorage.
   useEffect(() => {
-    let isActive = true;
+    setIsLoading(true);
+    setError("");
 
-    async function loadProject() {
-      setIsLoading(true);
-      setError("");
+    if (!projectId) {
       setProject(null);
-      setRequirements(defaultRequirements);
-
-      try {
-        const selectedProject = await getProject(projectId);
-
-        if (!isActive) return;
-
-        if (!selectedProject || typeof selectedProject !== "object") {
-          setProject(null);
-          setError("Project not found.");
-          return;
-        }
-
-        const normalizedRequirements = normalizeRequirements(
-          selectedProject.requirements,
-          selectedProject.scale,
-        );
-
-        setProject(selectedProject);
-        setRequirements(normalizedRequirements);
-        setSaved(false);
-      } catch (loadError) {
-        console.error("Unable to load project:", loadError);
-
-        if (!isActive) return;
-
-        setProject(null);
-
-        if (loadError.response?.status === 404) {
-          setError("Project not found.");
-        } else if (loadError.response?.status === 403) {
-          setError("You do not have permission to access this project.");
-        } else {
-          setError(
-            "Unable to load this project's requirements. Please try again.",
-          );
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    if (projectId) {
-      loadProject();
-    } else {
       setError("A valid project ID is required.");
       setIsLoading(false);
+      return;
     }
 
-    return () => {
-      isActive = false;
-    };
+    const projects = getStoredProjects();
+
+    const selectedProject = projects.find(
+      (item) => String(item.id) === String(projectId),
+    );
+
+    if (!selectedProject) {
+      setProject(null);
+      setError("Project not found. Please create a project first.");
+      setIsLoading(false);
+      return;
+    }
+
+    const normalizedRequirements = normalizeRequirements(
+      selectedProject.requirements,
+      selectedProject.scale,
+    );
+
+    setProject(selectedProject);
+    setRequirements(normalizedRequirements);
+    setSaved(false);
+    setIsLoading(false);
   }, [projectId]);
 
   // Save theme preference.
@@ -202,21 +183,16 @@ function RequirementsPage() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   };
 
-  // Update form fields with validation.
+  // Handle form changes.
   const handleChange = (event) => {
     const { name, value } = event.target;
 
     const textFields = ["functional", "security", "other"];
 
     if (textFields.includes(name)) {
-      const sanitizedValue = sanitizeText(value).slice(
-        0,
-        MAX_REQUIREMENT_LENGTH,
-      );
-
       setRequirements((previous) => ({
         ...previous,
-        [name]: sanitizedValue,
+        [name]: sanitizeText(value).slice(0, MAX_REQUIREMENT_LENGTH),
       }));
     } else if (name === "expectedTraffic" && trafficOptions.includes(value)) {
       setRequirements((previous) => ({
@@ -246,7 +222,7 @@ function RequirementsPage() {
     setError("");
   };
 
-  // Calculate completion using the seven requirement fields.
+  // Calculate completion.
   const completionItems = [
     requirements.functional,
     requirements.expectedTraffic,
@@ -265,15 +241,15 @@ function RequirementsPage() {
     (completedCount / completionItems.length) * 100,
   );
 
-  // Count non-empty functional requirement lines.
+  // Count functional requirement lines.
   const functionalCount = useMemo(
     () =>
       requirements.functional.split("\n").filter((line) => line.trim()).length,
     [requirements.functional],
   );
 
-  // Validate and save requirements through the backend API.
-  const handleSubmit = async (event) => {
+  // Validate and save requirements locally.
+  const handleSubmit = (event) => {
     event.preventDefault();
 
     if (!project || isSaving) return;
@@ -346,41 +322,36 @@ function RequirementsPage() {
     setError("");
     setSaved(false);
 
-    const updatedAt = new Date().toISOString();
-
     try {
-      const updatedProject = await updateProject(projectId, {
-        name: project.name,
-        description: project.description,
-        scale: project.scale,
+      const projects = getStoredProjects();
+
+      const projectIndex = projects.findIndex(
+        (item) => String(item.id) === String(projectId),
+      );
+
+      if (projectIndex === -1) {
+        throw new Error("Project not found. It may have been deleted.");
+      }
+
+      const updatedAt = new Date().toISOString();
+
+      const updatedProject = {
+        ...projects[projectIndex],
         requirements: validatedRequirements,
         updatedAt,
-      });
+      };
 
-      setProject((previous) => ({
-        ...previous,
-        ...(updatedProject || {}),
-        requirements: validatedRequirements,
-        updatedAt,
-      }));
+      projects[projectIndex] = updatedProject;
 
+      saveStoredProjects(projects);
+
+      setProject(updatedProject);
       setRequirements(validatedRequirements);
-
       setSaved(true);
       setError("");
     } catch (saveError) {
       console.error("Unable to save requirements:", saveError);
-
-      if (saveError.response?.status === 401) {
-        setError("Your session has expired. Please sign in again.");
-      } else if (saveError.response?.status === 403) {
-        setError("You do not have permission to update this project.");
-      } else if (saveError.response?.status === 404) {
-        setError("This project could not be found.");
-      } else {
-        setError("Unable to save requirements. Please try again.");
-      }
-
+      setError(saveError.message || "Unable to save requirements.");
       setSaved(false);
     } finally {
       setIsSaving(false);
@@ -444,7 +415,6 @@ function RequirementsPage() {
 
       {/* Main content */}
       <section className="dashboard-main requirements-main">
-        {/* Header */}
         <header className="requirements-redesign-header">
           <div>
             <p className="dashboard-breadcrumb">
@@ -474,22 +444,17 @@ function RequirementsPage() {
           </div>
         </header>
 
-        {/* Loading state */}
         {isLoading ? (
           <div className="requirements-not-found">
             <h2>Loading project...</h2>
           </div>
         ) : !project ? (
-          /* Project not found or unavailable */
           <div className="requirements-not-found">
             <div className="requirements-not-found-icon">!</div>
 
             <h2>Project unavailable</h2>
 
-            <p>
-              {error ||
-                "This project may have been deleted or you may not have permission to access it."}
-            </p>
+            <p>{error || "This project could not be found."}</p>
 
             <Link to="/dashboard" className="create-project-btn">
               Back to Dashboard
@@ -528,7 +493,9 @@ function RequirementsPage() {
                   <span className="requirements-small-label">
                     REQUIREMENTS CHECKLIST
                   </span>
+
                   <h2>Define your system requirements</h2>
+
                   <p>
                     Complete the sections below before moving to architecture
                     design.
@@ -559,6 +526,7 @@ function RequirementsPage() {
                 <span>
                   {completedCount} of {completionItems.length} fields completed
                 </span>
+
                 <span>{completionPercentage}%</span>
               </div>
             </section>
@@ -574,6 +542,7 @@ function RequirementsPage() {
 
                   <div>
                     <h2>Functional Requirements</h2>
+
                     <p>
                       Describe the features and actions your system must
                       support.
@@ -625,6 +594,7 @@ function RequirementsPage() {
 
                   <div>
                     <h2>Performance Requirements</h2>
+
                     <p>
                       Define the traffic and response time your system should
                       support.
@@ -701,6 +671,7 @@ function RequirementsPage() {
 
                   <div>
                     <h2>Scalability Strategy</h2>
+
                     <p>
                       Choose how your system should handle increasing numbers of
                       users and requests.
@@ -716,6 +687,7 @@ function RequirementsPage() {
                       <span className="requirements-small-label">
                         RECOMMENDED FOR YOUR PROJECT
                       </span>
+
                       <h3>{scalabilityRecommendation.recommended}</h3>
                     </div>
                   </div>
@@ -750,24 +722,24 @@ function RequirementsPage() {
                     </select>
 
                     <small>
-                      This recommendation is based on the target scale selected
-                      when you created the project. You can override it at any
-                      time.
+                      This recommendation is based on your project's scale. You
+                      can override it at any time.
                     </small>
                   </div>
                 </div>
               </section>
 
-              {/* Security and additional requirements */}
+              {/* Security and additional constraints */}
               <section className="requirements-redesign-section">
                 <div className="requirements-redesign-heading">
                   <span className="requirements-redesign-number">04</span>
 
                   <div>
                     <h2>Security and Additional Constraints</h2>
+
                     <p>
-                      Describe security expectations and any other important
-                      system limitations.
+                      Describe security expectations and other important system
+                      limitations.
                     </p>
                   </div>
                 </div>
@@ -827,7 +799,7 @@ function RequirementsPage() {
                 <div>
                   {saved ? (
                     <p className="requirements-success" role="status">
-                      ✓ Requirements saved successfully.
+                      ✓ Requirements saved successfully on this device.
                     </p>
                   ) : error ? (
                     <p className="form-error" role="alert">
