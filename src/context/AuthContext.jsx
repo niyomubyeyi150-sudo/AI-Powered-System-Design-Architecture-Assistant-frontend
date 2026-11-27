@@ -7,41 +7,25 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    let isMounted = true;
-
     async function initializeAuth() {
       try {
         const currentUser = await getCurrentUser();
-
-        if (isMounted) {
-          setUser(currentUser);
-          setAuthError(null);
-        }
+        setUser(currentUser);
       } catch (error) {
-        console.error("Authentication initialization failed:", error);
-
-        if (isMounted) {
-          setUser(null);
-          setAuthError(error);
-        }
+        console.error("Demo authentication failed:", error);
+        setUser(null);
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     }
 
     initializeAuth();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   function handleLogout() {
+    localStorage.removeItem("archpilot-user");
     setUser(null);
   }
 
@@ -49,7 +33,7 @@ export function AuthProvider({ children }) {
     user,
     isAuthenticated: Boolean(user),
     isLoading,
-    authError,
+    authError: null,
     setUser,
     logout: handleLogout,
   };

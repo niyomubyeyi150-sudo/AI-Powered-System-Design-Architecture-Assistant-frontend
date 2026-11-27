@@ -1,14 +1,42 @@
-import api from "./api";
+
+const STORAGE_KEY = "archpilot-user";
 
 export const loginWithGoogle = () => {
-  window.location.assign(`${api.defaults.baseURL}/auth/google`);
+  loginAsDemoUser("Google Demo");
 };
 
 export const loginWithGitHub = () => {
-  window.location.assign(`${api.defaults.baseURL}/auth/github`);
+  loginAsDemoUser("GitHub Demo");
 };
 
+function loginAsDemoUser(provider) {
+  const demoUser = {
+    id: "demo-user-001",
+    fullName: "ArchPilot Developer",
+    userName: "developer",
+    email: "developer@archpilot.local",
+    avatarUrl: "",
+    provider,
+    role: "USER",
+    createdAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(demoUser));
+
+  window.location.assign("/dashboard");
+}
+
 export const getCurrentUser = async () => {
-  const response = await api.get("/auth/me");
-  return response.data;
+  const storedUser = localStorage.getItem(STORAGE_KEY);
+
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(storedUser);
+  } catch (error) {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
 };
