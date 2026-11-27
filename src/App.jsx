@@ -18,7 +18,7 @@ function App() {
           <Route path="/" element={<EntryPage />} />
 
           {/* Temporary development routes - no authentication */}
-          <Route path="/dev/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
 
           <Route
             path="/dev/projects/:projectId/requirements"

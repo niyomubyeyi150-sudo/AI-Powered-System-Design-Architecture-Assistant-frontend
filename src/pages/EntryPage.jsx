@@ -4,7 +4,7 @@ import {
   loginWithGoogle,
   loginWithGitHub,
 } from "../services/authService";
-function WelcomePage() {
+function EntryPage() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("archpilot-theme") || "light",
   );
@@ -209,5 +209,4 @@ function WelcomePage() {
     </main>
   );
 }
-
-export default WelcomePage;
+export default EntryPage;

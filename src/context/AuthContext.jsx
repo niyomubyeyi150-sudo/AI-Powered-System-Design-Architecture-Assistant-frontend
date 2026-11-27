@@ -7,22 +7,25 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function initializeAuth() {
       try {
-        // Check whether the current user is authenticated
         const currentUser = await getCurrentUser();
 
         if (isMounted) {
           setUser(currentUser);
+          setAuthError(null);
         }
       } catch (error) {
-        // User is not authenticated or the request failed
+        console.error("Authentication initialization failed:", error);
+
         if (isMounted) {
           setUser(null);
+          setAuthError(error);
         }
       } finally {
         if (isMounted) {
@@ -38,7 +41,6 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // Clear the user's local authentication state
   function handleLogout() {
     setUser(null);
   }
@@ -47,6 +49,7 @@ export function AuthProvider({ children }) {
     user,
     isAuthenticated: Boolean(user),
     isLoading,
+    authError,
     setUser,
     logout: handleLogout,
   };
